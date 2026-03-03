@@ -8,12 +8,11 @@ Layout:
 - Bottom: Action buttons (Submit, Save Edit, Approve, History)
 """
 
-import json
 import logging
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QPlainTextEdit, QGroupBox, QComboBox, QMessageBox, QSplitter,
+    QPlainTextEdit, QGroupBox, QMessageBox, QSplitter,
 )
 from PySide6.QtCore import Qt
 
@@ -157,10 +156,10 @@ class StepEditor(QWidget):
         # Load existing approved version if any
         approved = self.repository.get_approved_step_version(step_id)
         if approved:
-            self.output_text.setPlainText(approved.content)
+            self.output_text.setPlainText(approved["content"])
             self.version_label.setText(
-                f"Approved: v{approved.version_number} "
-                f"(by {approved.created_by})"
+                f"Approved: v{approved['version_number']} "
+                f"(by {approved['created_by']})"
             )
         else:
             # Load latest draft if exists

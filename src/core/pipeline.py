@@ -218,7 +218,6 @@ class Pipeline:
                 continue
 
             approved = self.repository.get_approved_step_version(step.id)
-            versions = step.versions if hasattr(step, "versions") else []
 
             status_list.append({
                 "step_number": step_def["number"],
@@ -226,7 +225,6 @@ class Pipeline:
                 "label": step_def["label"],
                 "status": "approved" if approved else "in_progress",
                 "has_approved": approved is not None,
-                "version_count": len(versions) if versions else 0,
                 "step_id": step.id,
             })
 
@@ -269,6 +267,8 @@ class Pipeline:
                 Step.episode_id == episode_id,
                 Step.step_number == step_number,
             ).first()
+            if step:
+                session.expunge(step)
             return step
         finally:
             session.close()
@@ -316,12 +316,13 @@ class Pipeline:
             return None
 
         # Try to parse content as JSON, fall back to plain text
+        content = approved["content"]
         try:
-            return json.loads(approved.content)
+            return json.loads(content)
         except (json.JSONDecodeError, TypeError):
             prev_def = STEP_DEFINITIONS[step_number - 2]
             return {
                 "step": prev_def["name"],
                 "label": prev_def["label"],
-                "content": approved.content,
+                "content": content,
             }
