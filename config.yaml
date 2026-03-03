@@ -1,0 +1,39 @@
+# Wuxia Story Studio Configuration
+# API 키는 .env 파일에서 관리합니다 (여기에 절대 넣지 마세요)
+
+project:
+  name: "무림 스토리 스튜디오"
+  version: "1.0.0"
+  database: "projects/wuxia.db"
+
+gemini:
+  model: "gemini-2.5-flash"
+  max_tokens: 8000
+  temperature: 0.8
+  key_rotation: true
+  retry_count: 3
+  retry_delay: 2
+
+pipeline:
+  steps:
+    - STEP1_MATERIAL
+    - STEP2_WORLDBUILD
+    - STEP3_STRUCTURE
+    - STEP4_NARRATIVE
+    - STEP5_PROMPT
+    - STEP6_APPROVAL
+  auto_approve_threshold: 0.7
+
+ui:
+  theme: "dark"
+  window_width: 1600
+  window_height: 900
+  font_size: 11
+
+skill_files:
+  directory: "docs/SKILL_FILES"
+  master: "MASTER_SYSTEM_v3.0.md"
+  narrator: "SK-01_NARRATOR.md"
+  story: "SK-02_STORY.md"
+  prompt: "SK-03_PROMPT.md"
+  material: "SK-04_MATERIAL.md"

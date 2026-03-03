@@ -1,0 +1,114 @@
+wuxia-story/
+├── README.md                     # 프로젝트 소개, 실행법
+├── .env.example                  # API 키 템플릿 (실제 키는 .gitignore)
+├── .gitignore
+├── requirements.txt
+├── config.yaml                   # 설정 (API 키 참조는 환경변수만)
+│
+├── docs/                         # 설계 문서 (코드와 분리)
+│   ├── ARCHITECTURE.md           # 전체 아키텍처
+│   ├── AGENT_SPECS.md            # 5 에이전트 상세 스펙
+│   ├── WORKFLOW.md               # 단계별 워크플로우
+│   └── SKILL_FILES/              # 마스터 시스템 + 스킬 마크다운
+│       ├── MASTER_SYSTEM_v3.0.md
+│       ├── SK-01_NARRATOR.md
+│       ├── SK-02_STORY.md
+│       ├── SK-03_PROMPT.md
+│       └── SK-04_MATERIAL.md
+│
+├── src/
+│   ├── __init__.py
+│   ├── main.py                   # 엔트리포인트
+│   │
+│   ├── agents/                   # 5 에이전트 (각각 독립 모듈)
+│   │   ├── __init__.py
+│   │   ├── material_agent.py     # L0: 소재 에이전트
+│   │   ├── narrator_agent.py     # L1: 초월적 화자
+│   │   ├── story_agent.py        # L2: 스토리 구조
+│   │   ├── language_agent.py     # L3: 문체/대사
+│   │   └── prompt_agent.py       # L4: 영상 프롬프트 (출력 레이어)
+│   │
+│   ├── core/                     # 핵심 인프라
+│   │   ├── __init__.py
+│   │   ├── skill_loader.py       # docs/SKILL_FILES → 시스템 프롬프트 컴파일러
+│   │   ├── gemini_client.py      # Gemini API 래퍼 (키 로테이션, 재시도)
+│   │   ├── dispatcher.py         # 듀얼모드 디스패처 (A/B/C 모드 관리)
+│   │   └── pipeline.py           # 단계 파이프라인 오케스트레이터
+│   │
+│   ├── data/                     # 데이터 레이어
+│   │   ├── __init__.py
+│   │   ├── models.py             # SQLAlchemy 모델
+│   │   ├── repository.py         # DB CRUD 추상화
+│   │   └── migrations/           # Alembic 마이그레이션
+│   │
+│   └── ui/                       # PySide6 UI
+│       ├── __init__.py
+│       ├── main_window.py
+│       ├── step_editor.py        # 단계별 편집기 (핵심 UI)
+│       ├── material_dashboard.py
+│       ├── history_viewer.py     # 버전 히스토리
+│       └── dialogs.py
+│
+├── projects/                     # 프로젝트 데이터 (gitignore 대상)
+│   └── wuxia.db
+│
+└── tests/
+    ├── test_dispatcher.py
+    ├── test_gemini_client.py
+    ├── test_pipeline.py
+    └── test_agents.py
+스토리 파이프라인: 6단계 워크플로우
+이것이 프로젝트의 핵심입니다. 각 단계가 완료되어야 다음 단계로 넘어갑니다.
+
+STEP 1: 소재 선정 (Material Agent)
+입력: 트렌드 데이터, 기존 TOP-10 풀 출력: 선정된 소재 브리프 (로그라인, 핵심 갈등, 타겟 독자, 심리 훅 분석) 모드: 주로 A(인간 중계) 또는 C(혼합) — 소재는 인간 판단이 중요
+
+STEP 2: 세계관/캐릭터 설계 (Narrator Agent + Story Agent)
+입력: STEP 1 브리프 출력: 세계관 설정서, 캐릭터 프로파일 (5층 레이어), 관계도 모드: C(혼합) — Gemini가 초안, 인간이 깊이 추가
+
+STEP 3: 에피소드 구조 (Story Agent)
+입력: STEP 2 설정 + 15비트 구조 규칙 출력: 15비트 시퀀스, 씬 리스트, 타이밍 배분, 감정 곡선 모드: B(자동화) 가능 — 규칙 기반으로 자동 생성 후 검수
+
+STEP 4: 씬별 상세 서술 (Narrator Agent + Language Agent)
+입력: STEP 3 비트 구조 출력: 각 씬의 내러티브 텍스트, 대사, 감정 지시, 액션 묘사 모드: C(혼합) — 문체와 대사는 인간 감수 필수
+
+STEP 5: 영상 프롬프트 변환 (Prompt Agent)
+입력: STEP 4 씬 서술 출력: 씬별 이미지/비디오 생성 프롬프트, 카메라, 조명, 의상 지정 모드: B(자동화) 가능 — 규칙 매핑으로 자동 변환
+
+STEP 6: 최종 패키지 승인
+입력: STEP 1~5 전체 산출물 출력: 영상 제작팀(또는 다음 파이프라인)에 넘길 완성 패키지 모드: A(인간 중계) — 최종 승인은 반드시 인간
+
+각 단계의 DB 기록:
+┌─────────────────────────────────────────┐
+│ Step                                    │
+│  ├─ StepVersion v1 (gemini_auto, draft) │
+│  ├─ StepVersion v2 (human_edit, draft)  │
+│  └─ StepVersion v3 (human_edit, approved)│ ← 이것만 다음 단계 입력으로 사용
+└─────────────────────────────────────────┘
+이전 프로젝트의 교훈 반영
+이전 문제	새 프로젝트 해결책
+API 키가 config.json에 노출	.env 파일 + .gitignore 필수
+스킬 마크다운과 코드가 이중 관리	skill_loader.py가 마크다운을 읽어서 프롬프트 생성 (단일 소스)
+Dispatcher가 UI와 미연결	step_editor.py에서 직접 dispatcher 호출 (버튼 → 핸들러 → dispatcher → gemini/human)
+Episode 생성 시 Step 미생성	repository.py에서 Episode 생성 시 6개 Step 자동 생성
+버전 히스토리 미저장	모든 생성/수정은 반드시 StepVersion으로 기록
+에이전트가 3개만 구현	5개 에이전트 전부 구현 (material, narrator, story, language, prompt)
+단계 간 컨텍스트 단절	pipeline.py가 이전 단계 승인 결과를 다음 단계 입력에 자동 주입
+구현 우선순위
+1주차: 뼈대 (작동하는 최소 시스템)
+프로젝트 초기화 (구조, requirements, .env, config)
+models.py (Project, Episode, Step, StepVersion — 깔끔하게)
+gemini_client.py (최신 SDK, .env에서 키 로드, 키 로테이션)
+skill_loader.py (마크다운 → 시스템 프롬프트)
+dispatcher.py (3가지 모드 동작)
+pipeline.py (단계 연결, 컨텍스트 전달)
+step_editor.py (입력/출력 패널, Submit/Approve 버튼 동작)
+2주차: 에이전트 통합
+5개 에이전트 각각 구현 (시스템 프롬프트 빌더 + 검증 로직)
+에이전트 ↔ 디스패처 ↔ UI 전체 흐름 테스트
+STEP 1~6 파이프라인 EP01 테스트 실행
+3주차: 완성도
+Material Dashboard + 소재 평가 시스템
+History Viewer + 버전 관리
+연속성 추적 (복선, 캐릭터 상태)
+테스트 작성 및 문서 정리
