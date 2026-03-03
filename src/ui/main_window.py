@@ -125,6 +125,16 @@ class MainWindow(QMainWindow):
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
         toolbar.addWidget(self.mode_combo)
 
+        toolbar.addSeparator()
+        self.bulk_btn = QPushButton("  FULL GENERATE  ")
+        self.bulk_btn.setStyleSheet(
+            "padding: 8px 24px; font-weight: bold; "
+            "background-color: #1a6fd4; color: white; "
+            "border-radius: 4px; font-size: 13px;"
+        )
+        self.bulk_btn.clicked.connect(self.on_bulk_generate)
+        toolbar.addWidget(self.bulk_btn)
+
     # -----------------------------------------
     # Project tree
     # -----------------------------------------
@@ -253,6 +263,100 @@ class MainWindow(QMainWindow):
     def on_reload_skills(self):
         self.skill_loader.reload()
         self.status_bar.showMessage("Skill files reloaded", 3000)
+
+    def on_bulk_generate(self):
+        """One-shot full pipeline generation"""
+        from PySide6.QtWidgets import QInputDialog, QProgressDialog, QApplication
+        from src.core.bulk_generator import BulkGenerator
+
+        # 1. Get or create project
+        project_id = self._get_first_project_id()
+        if not project_id:
+            name, ok = QInputDialog.getText(
+                self, "New Project", "Project name:"
+            )
+            if not ok or not name.strip():
+                return
+            result = self.repository.create_project(name.strip())
+            project_id = result["id"]
+
+        # 2. Get concept from user
+        concept, ok = QInputDialog.getMultiLineText(
+            self,
+            "Full Generate",
+            "Enter your story concept:\n"
+            "(Can be one sentence or detailed description)\n\n"
+            "Example: A servant boy discovers a forbidden martial art\n"
+            "that was sealed by the orthodox sect, and rises to\n"
+            "challenge the hypocritical power structure.",
+            "",
+        )
+        if not ok or not concept.strip():
+            return
+
+        # 3. Create episode
+        session = self.repository.get_session()
+        try:
+            from src.data.models import Episode
+            max_ep = session.query(Episode).filter(
+                Episode.project_id == project_id
+            ).order_by(Episode.episode_number.desc()).first()
+            next_num = (max_ep.episode_number + 1) if max_ep else 1
+        finally:
+            session.close()
+
+        ep_result = self.repository.create_episode(
+            project_id, next_num, concept[:50]
+        )
+        episode_id = ep_result["id"]
+
+        # 4. Show progress
+        progress = QProgressDialog(
+            "Generating full pipeline...\n"
+            "This may take 1-3 minutes.",
+            "Cancel", 0, 0, self,
+        )
+        progress.setWindowTitle("Full Generate")
+        progress.setMinimumDuration(0)
+        progress.show()
+        QApplication.processEvents()
+
+        # 5. Run bulk generation
+        bulk = BulkGenerator(
+            gemini_client=self.gemini_client,
+            skill_loader=self.skill_loader,
+            repository=self.repository,
+        )
+
+        result = bulk.generate_full_pipeline(
+            project_id=project_id,
+            episode_id=episode_id,
+            concept=concept,
+        )
+
+        progress.close()
+
+        # 6. Show result
+        if result["success"]:
+            tokens = result.get("tokens_used", {})
+            QMessageBox.information(
+                self,
+                "Complete",
+                f"Full pipeline generated!\n\n"
+                f"Tokens: {tokens.get('input', 0):,} in / "
+                f"{tokens.get('output', 0):,} out\n\n"
+                f"All 6 steps saved as drafts.\n"
+                f"Click each step in the tree to review and edit.\n"
+                f"Approve each step when satisfied.",
+            )
+        else:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Generation failed:\n{result.get('error', 'Unknown')}",
+            )
+
+        self.refresh_project_tree()
 
     # -----------------------------------------
     # Helpers
