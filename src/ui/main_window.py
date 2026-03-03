@@ -265,16 +265,22 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Skill files reloaded", 3000)
 
     def on_bulk_generate(self):
-        """One-shot full pipeline generation"""
+        """One-shot full pipeline generation (sequential)"""
         from PySide6.QtWidgets import QInputDialog, QProgressDialog, QApplication
         from src.core.bulk_generator import BulkGenerator
+
+        # Check Gemini
+        if not self.gemini_client or not self.gemini_client.is_available():
+            QMessageBox.warning(
+                self, "Warning",
+                "Gemini client not connected.\nCheck your API key in .env file."
+            )
+            return
 
         # 1. Get or create project
         project_id = self._get_first_project_id()
         if not project_id:
-            name, ok = QInputDialog.getText(
-                self, "New Project", "Project name:"
-            )
+            name, ok = QInputDialog.getText(self, "New Project", "Project name:")
             if not ok or not name.strip():
                 return
             result = self.repository.create_project(name.strip())
@@ -283,12 +289,12 @@ class MainWindow(QMainWindow):
         # 2. Get concept from user
         concept, ok = QInputDialog.getMultiLineText(
             self,
-            "Full Generate",
-            "Enter your story concept:\n"
-            "(Can be one sentence or detailed description)\n\n"
-            "Example: A servant boy discovers a forbidden martial art\n"
-            "that was sealed by the orthodox sect, and rises to\n"
-            "challenge the hypocritical power structure.",
+            "Full Generate - Story Concept",
+            "Enter your story concept:\n\n"
+            "One sentence is enough. Example:\n"
+            "A servant boy discovers a forbidden martial art\n"
+            "sealed by the orthodox sect, and rises to challenge\n"
+            "the hypocritical power structure.",
             "",
         )
         if not ok or not concept.strip():
@@ -310,18 +316,28 @@ class MainWindow(QMainWindow):
         )
         episode_id = ep_result["id"]
 
-        # 4. Show progress
+        # 4. Progress dialog
         progress = QProgressDialog(
-            "Generating full pipeline...\n"
-            "This may take 1-3 minutes.",
-            "Cancel", 0, 0, self,
+            "Starting pipeline generation...",
+            None,  # No cancel button
+            0, 5,
+            self,
         )
-        progress.setWindowTitle("Full Generate")
+        progress.setWindowTitle("Full Generate (5 Steps)")
         progress.setMinimumDuration(0)
+        progress.setMinimumWidth(400)
         progress.show()
         QApplication.processEvents()
 
-        # 5. Run bulk generation
+        def update_progress(step_num, msg):
+            progress.setValue(step_num - 1)
+            progress.setLabelText(
+                f"Step {step_num}/5: {msg}\n\n"
+                f"Please wait... (each step takes 30~60 seconds)"
+            )
+            QApplication.processEvents()
+
+        # 5. Run sequential bulk generation
         bulk = BulkGenerator(
             gemini_client=self.gemini_client,
             skill_loader=self.skill_loader,
@@ -332,8 +348,10 @@ class MainWindow(QMainWindow):
             project_id=project_id,
             episode_id=episode_id,
             concept=concept,
+            progress_callback=update_progress,
         )
 
+        progress.setValue(5)
         progress.close()
 
         # 6. Show result
@@ -343,17 +361,20 @@ class MainWindow(QMainWindow):
                 self,
                 "Complete",
                 f"Full pipeline generated!\n\n"
+                f"Steps completed: {len(result.get('completed_steps', []))}\n"
                 f"Tokens: {tokens.get('input', 0):,} in / "
                 f"{tokens.get('output', 0):,} out\n\n"
-                f"All 6 steps saved as drafts.\n"
-                f"Click each step in the tree to review and edit.\n"
-                f"Approve each step when satisfied.",
+                f"All steps saved as DRAFTS.\n"
+                f"Click each step to review, edit, and approve.",
             )
         else:
+            completed = result.get("completed_steps", [])
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Generation failed:\n{result.get('error', 'Unknown')}",
+                f"Generation failed at: {result.get('error', 'Unknown')}\n\n"
+                f"Completed steps: {completed}\n"
+                f"You can still review completed steps in the tree.",
             )
 
         self.refresh_project_tree()
